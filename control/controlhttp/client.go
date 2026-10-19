@@ -68,6 +68,9 @@ func (a *Dialer) Dial(ctx context.Context) (*ClientConn, error) {
 	if a.Hostname == "" {
 		return nil, errors.New("required Dialer.Hostname empty")
 	}
+	if envknob.Bool("TS_DEBUG_CONTROL_WS_CLIENT") {
+		return a.dialWebsocket(ctx)
+	}
 	return a.dial(ctx)
 }
 
