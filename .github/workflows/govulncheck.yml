@@ -1,12 +1,15 @@
 name: govulncheck
 
 on:
+  push:
+    branches: [main]
   schedule:
-    - cron: "0 12 * * *" # 8am EST / 10am PST / 12pm UTC
-  workflow_dispatch: # allow manual trigger for testing
+    - cron: "0 12 * * *"
+  workflow_dispatch:
   pull_request:
-    paths:
-      - ".github/workflows/govulncheck.yml"
+
+permissions:
+  contents: read
 
 jobs:
   source-scan:
@@ -21,31 +24,3 @@ jobs:
 
       - name: Scan source code for known vulnerabilities
         run: PATH=$PWD/tool/:$PATH "$(./tool/go env GOPATH)/bin/govulncheck" -test ./...
-
-      - name: Post to slack
-        if: failure() && github.event_name == 'schedule'
-        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.GOVULNCHECK_BOT_TOKEN }}
-          payload: |
-            {
-              "channel": "C08FGKZCQTW",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "Govulncheck failed in ${{ github.repository }}"
-                  },
-                  "accessory": {
-                    "type": "button",
-                    "text": {
-                      "type": "plain_text",
-                      "text": "View results"
-                    },
-                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
-            }

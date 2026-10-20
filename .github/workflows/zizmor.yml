@@ -3,12 +3,7 @@ name: security lint GitHub Actions  with zizmor
 on:
   push:
     branches: ["main"]
-    paths:
-      - ".github/workflows/**"
   pull_request:
-    branches: ["**"]
-    paths:
-      - ".github/workflows/**"
 
 permissions: {}
 
@@ -30,3 +25,8 @@ jobs:
           min-severity: high
           advanced-security: false
           annotations: true
+
+      - name: Lint GitHub Actions
+        run: |
+          ./tool/go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(./tool/go env GOPATH)/bin/actionlint" -shellcheck=
