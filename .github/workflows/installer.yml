@@ -115,30 +115,3 @@ jobs:
         if [ -n "${{ matrix.version }}" ]; then
           tailscale --version | grep -q "^${{ matrix.version }}" || { echo "Version mismatch!"; exit 1; }
         fi
-  notify-slack:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify Slack of failure on scheduled runs
-        if: failure() && github.event_name == 'schedule'
-        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "attachments": [{
-                "title": "Tailscale installer test failed",
-                "title_link": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "text": "One or more OSes in the test matrix failed. See the run for details.",
-                "fields": [
-                  {
-                    "title": "Ref",
-                    "value": "${{ github.ref_name }}",
-                    "short": true
-                  }
-                ],
-                "footer": "${{ github.workflow }} on schedule",
-                "color": "danger"
-              }]
-            }

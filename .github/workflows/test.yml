@@ -27,7 +27,7 @@ concurrency:
   # For non-PR pushes, concurrency.group needs to be unique for every distinct
   # CI run we want to have happen. Use run_id, which in practice means all
   # non-PR CI runs will be allowed to run without preempting each other.
-  group: ${{ github.workflow }}-$${{ github.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -208,12 +208,8 @@ jobs:
 
   windows:
     permissions:
-      id-token: write # This is required for requesting the GitHub action identity JWT that can auth to cigocached
-      contents: read # This is required for actions/checkout
-    # ci-windows-github-1 is a 2022 GitHub-managed runner in our org with 8 cores
-    # and 32 GB of RAM. It is connected to a private Azure VNet that hosts cigocached.
-    # https://github.com/organizations/tailscale/settings/actions/github-hosted-runners/5
-    runs-on: ci-windows-github-1
+      contents: read
+    runs-on: windows-2025
     needs: gomod-cache
     name: Windows (${{ matrix.name || matrix.shard}})
     strategy:
@@ -238,15 +234,6 @@ jobs:
         path: gomodcache
         key: ${{ needs.gomod-cache.outputs.cache-key }}
         enableCrossOsArchive: true
-
-    - name: Set up cigocacher
-      id: cigocacher-setup
-      uses: ./src/.github/actions/go-cache
-      with:
-        checkout-path: ${{ github.workspace }}/src
-        cache-dir: ${{ github.workspace }}/cigocacher
-        cigocached-url: ${{ vars.CIGOCACHED_AZURE_URL }}
-        cigocached-host: ${{ vars.CIGOCACHED_AZURE_HOST }}
 
     - name: test
       shell: bash
@@ -275,14 +262,6 @@ jobs:
       run: ./tool/go test -bench=. -benchtime=1x -run='^$' $(for x in $(git grep -l '^func Benchmark' | xargs dirname | sort | uniq); do echo "./$x"; done)
       env:
         NOPWSHDEBUG: "true" # to quiet tool/gocross/gocross-wrapper.ps1 in CI
-
-    - name: Print stats
-      shell: pwsh
-      if: steps.cigocacher-setup.outputs.success == 'true'
-      env:
-        GOCACHEPROG: ${{ env.GOCACHEPROG }}
-      run: |
-        Invoke-Expression "$env:GOCACHEPROG --stats" | jq .
 
   macos:
     runs-on: macos-latest
@@ -433,7 +412,7 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
-        GOARM: ${{ matrix.goarm }}
+        GOARM: ${{ matrix.goarm || '' }}
         CGO_ENABLED: "0"
     - name: build tests
       working-directory: src
@@ -532,7 +511,6 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
-        GOARM: ${{ matrix.goarm }}
         CGO_ENABLED: "0"
     - name: Tidy cache
       working-directory: src
@@ -811,88 +789,6 @@ jobs:
           "env GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}" \
            honnef.co/go/tools/cmd/staticcheck -- \
            $(./tool/go run ./tool/listpkgs --ignore-3p --goos=${{ matrix.goos }} --goarch=${{ matrix.goarch }} ${{ matrix.flags }} ./...)
-
-  notify_slack:
-    if: always()
-    # Any of these jobs failing causes a slack notification.
-    needs:
-      - android
-      - test
-      - windows
-      - macos
-      - cross
-      - ios
-      - wasm
-      - tailscale_go
-      - depaware
-      - go_generate
-      - make_tidy
-      - licenses
-      - staticcheck
-    runs-on: ubuntu-24.04
-    steps:
-    - name: notify  
-      # Only notify slack for merged commits, not PR failures.
-      #
-      # It may be tempting to move this condition into the job's 'if' block, but
-      # don't: Github only collapses the test list into "everything is OK" if
-      # all jobs succeeded. A skipped job results in the list staying expanded.
-      # By having the job always run, but skipping its only step as needed, we
-      # let the CI output collapse nicely in PRs.
-      if: failure() && github.event_name == 'push'
-      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
-      with:
-        webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-        webhook-type: incoming-webhook
-        payload: |
-          {
-            "attachments": [{
-              "title": "Failure: ${{ github.workflow }}",
-              "title_link": "https://github.com/${{ github.repository }}/commit/${{ github.sha }}/checks",         
-              "text": "${{ github.repository }}@${{ github.ref_name }}: <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>",
-              "fields": [{ "value": ${{ toJson(github.event.head_commit.message) }}, "short": false }],
-              "footer": "${{ github.event.head_commit.committer.name }} at ${{ github.event.head_commit.timestamp }}",
-              "color": "danger"
-            }]
-          }
-
-  notify_windows:
-    if: always()
-    needs:
-      - windows
-    runs-on: ubuntu-24.04
-    steps:
-    - name: checkout
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        path: src
-        persist-credentials: false
-    - name: Download Windows integration results
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-      with:
-        pattern: windows-integration-results-*
-        path: results
-    - name: Build Slack payload
-      id: payload
-      uses: ./src/.github/actions/windows-slack-payload
-      with:
-        result: ${{ needs.windows.result }}
-        title: ${{ github.event.pull_request.title }}
-        header: "<${{ github.event.pull_request.html_url }}|PR #${{ github.event.pull_request.number }}> · `${{ github.event.pull_request.head.ref }}`"
-        status-label: Windows CI
-        tests-label: Windows Integration Tests
-        # One result file per non-bench leg of the windows matrix.
-        expected-files: "2"
-    - name: Send Slack notification
-      env:
-        WEBHOOK: ${{ secrets.WINDOWS_SLACK_WEBHOOK_URL }}
-      if: env.WEBHOOK != '' && github.event_name == 'pull_request' && needs.windows.result != 'cancelled'
-      continue-on-error: true
-      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
-      with:
-        webhook: ${{ env.WEBHOOK }}
-        webhook-type: incoming-webhook
-        payload-file-path: payload.json
 
   merge_blocker:
     if: always()
