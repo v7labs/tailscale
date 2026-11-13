@@ -1,7 +1,7 @@
 {
-  "source_commit": "77f8149fcdf39abe3f890da21fc30b2a6c8ec7cf",
-  "upstream_version": "v1.104.6",
-  "file_id": "file_01GXtJv9Uii4LQY4aZbPYkqR",
-  "archive_sha256": "04f21901afe6f59465535bd090dda9470ef3047bf865687fb8148c9e67a0158f",
+  "source_commit": "b846966dbc0b9e48706af2aa19aa40d772a2f9c4",
+  "upstream_version": "v1.104.7",
+  "file_id": "file_01EVvfbwWeqLJWV4w4CmoCRe",
+  "archive_sha256": "d1c1f97b16d65fa2d588a9331d96d95db3ef016986ec3bf5ba05ffcdae78977b",
   "platform": "linux-amd64"
 }
